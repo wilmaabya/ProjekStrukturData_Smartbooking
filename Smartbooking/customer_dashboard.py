@@ -45,38 +45,6 @@ def get_all_paket():
     conn.close()
     return paket_list
 
-def build_interval_tree(tanggal): 
-    """Mengambil semua slot booking yang disetujui untuk tanggal tertentu dan membangun IntervalTree."""
-    
-    conn = get_connection()
-    cur = conn.cursor()
-
-    cur.execute("""
-        SELECT waktu_mulai, waktu_selesai
-        FROM booking
-        JOIN status_booking ON booking.id_status_booking = status_booking.id_status_booking
-        WHERE status_booking.status != 'Dibatalkan' AND tanggal_pelaksanaan = %s
-    """, (tanggal,))
-
-    rows = cur.fetchall() 
-    cur.close()
-    conn.close()
-
-    tree = IntervalTree()
-    
-    def to_time(t): 
-        if isinstance(t, str):
-            return datetime.datetime.strptime(t, "%H:%M:%S").time()
-        return t
-
-    for row in rows: 
-        mulai = to_time(row[0])
-        selesai = to_time(row[1])
-        tree.insert(mulai, selesai) 
-        
-    return tree
-
-
 def build_interval_tree(tanggal):     
     conn = get_connection()
     cur = conn.cursor()
