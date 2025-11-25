@@ -1,8 +1,8 @@
 from db import get_connection
 import datetime 
-from rekomendasi_knapsack import rekomendasi_paket_knapsack
 from tabulate import tabulate 
 import os
+from interval_tree import IntervalTree
 
 def clear_console():
     os.system("cls" if os.name == "nt" else "clear")
@@ -15,9 +15,8 @@ def customer_dashboard(customer_id):
         print("2. Lihat Data Booking Saya")
         print("3. Batalkan Booking")
         print("4. Pilih Metode Pembayaran")
-        print("5. Rekomendasi Paket Berdasarkan Budget")
-        print("6. Review")
-        print("7. Keluar ke Menu Utama")
+        print("5. Review")
+        print("6. Keluar ke Menu Utama")
         pilihan = input("Pilih menu: ")
 
         if pilihan == "1":
@@ -29,10 +28,8 @@ def customer_dashboard(customer_id):
         elif pilihan == "4":
             pilih_metode_pembayaran(customer_id)
         elif pilihan == "5":
-            rekomendasi_paket_knapsack()
-        elif pilihan == "6":
             review_menu(customer_id)
-        elif pilihan == "7":
+        elif pilihan == "6":
             break
         else:
             print("Pilihan tidak valid!")
@@ -48,7 +45,9 @@ def get_all_paket():
     conn.close()
     return paket_list
 
-def get_sorted_bookings(tanggal): 
+def build_interval_tree(tanggal): 
+    """Mengambil semua slot booking yang disetujui untuk tanggal tertentu dan membangun IntervalTree."""
+    
     conn = get_connection()
     cur = conn.cursor()
 
@@ -57,52 +56,63 @@ def get_sorted_bookings(tanggal):
         FROM booking
         JOIN status_booking ON booking.id_status_booking = status_booking.id_status_booking
         WHERE status_booking.status != 'Dibatalkan' AND tanggal_pelaksanaan = %s
-        ORDER BY waktu_mulai
     """, (tanggal,))
 
     rows = cur.fetchall() 
     cur.close()
     conn.close()
 
+    tree = IntervalTree()
+    
     def to_time(t): 
         if isinstance(t, str):
             return datetime.datetime.strptime(t, "%H:%M:%S").time()
         return t
 
-    result = []
     for row in rows: 
         mulai = to_time(row[0])
         selesai = to_time(row[1])
-        result.append((mulai, selesai))
-    return result
+        tree.insert(mulai, selesai) 
+        
+    return tree
 
-def binary_search(arr, target): 
-    left, right = 0, len(arr)
-    while left < right:
-        mid = (left + right) // 2
-        if arr[mid] <= target:
-            left = mid + 1
-        else:
-            right = mid
-    return left
 
-def is_slot_available(tanggal, mulai, selesai): 
-    bookings = get_sorted_bookings(tanggal) 
+def build_interval_tree(tanggal):     
+    conn = get_connection()
+    cur = conn.cursor()
 
-    waktu_mulai = []
-    for booking in bookings: 
-        start_booking = booking[0] 
-        waktu_mulai.append(start_booking)
-    idx = binary_search(waktu_mulai, mulai) 
+    cur.execute("""
+        SELECT waktu_mulai, waktu_selesai
+        FROM booking
+        JOIN status_booking ON booking.id_status_booking = status_booking.id_status_booking
+        WHERE status_booking.status != 'Dibatalkan' AND tanggal_pelaksanaan = %s
+    """, (tanggal,))
 
-    def conflict(start1, end1, start2, end2): 
-        return start1 < end2 and start2 < end1 
+    rows = cur.fetchall() 
+    cur.close()
+    conn.close()
 
-    for i in [idx - 1, idx]: 
-        if 0 <= i < len(bookings): 
-            start_db, end_db = bookings[i] 
-            if conflict(mulai, selesai, start_db, end_db): 
-                return False
+    tree = IntervalTree()
+    
+    def to_time(t): 
+        if isinstance(t, str):
+            return datetime.datetime.strptime(t, "%H:%M:%S").time()
+        return t
+
+    for row in rows: 
+        mulai = to_time(row[0])
+        selesai = to_time(row[1])
+        
+        tree.insert(mulai, selesai) 
+        
+    return tree
+
+def is_slot_available(tanggal, mulai, selesai):     
+    tree = build_interval_tree(tanggal) 
+    
+    if tree.search_overlap(mulai, selesai): 
+        return False
+        
     return True
 
 def booking_jadwal(customer_id):

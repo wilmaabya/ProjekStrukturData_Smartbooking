@@ -3,7 +3,7 @@ import psycopg2
 def get_connection():
     return psycopg2.connect(
         host="localhost",
-        database="proyekbasda",
+        database="smartbooking",
         user="postgres",
-        password="W1lmaaa!"
+        password="4njeliad"
     )
