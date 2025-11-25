@@ -7,3 +7,6 @@ def get_connection():
         user="postgres",
         password="4njeliad"
     )
+
+
+# ini nyoba bua comit ke github dari vscode
