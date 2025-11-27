@@ -18,9 +18,8 @@ def admin_dashboard():
         print("3. Kelola Paket Jasa")
         print("4. Kelola Fotografer")
         print("5. Lihat Review")
-        print("6. Lihat Booking Pending (Priority)") 
-        print("7. Lihat Booking Prioritas (MaxHeap)")
-        print("8. Keluar")
+        print("6. Lihat Booking Prioritas (MaxHeap)")
+        print("7. Keluar")
 
         pilihan = input("Pilih menu: ")
 
@@ -35,10 +34,8 @@ def admin_dashboard():
         elif pilihan == "5":
             lihat_review()
         elif pilihan == "6":
-            lihat_booking_pending_priority()      # ➜ panggil fungsi heap
-        elif pilihan == "7":
             lihat_booking_prioritas()
-        elif pilihan == "8":
+        elif pilihan == "7":
             break
 
         else:
@@ -930,188 +927,125 @@ def lihat_review():
     input("Tekan enter untuk lanjut")
     clear_console()
 
-def lihat_booking_pending_priority():
-    clear_console()
-    print("\n=== Booking Pending (Priority Queue) ===")
-
-    try:
-        conn = get_connection()
-        cur = conn.cursor()
-
-        # ambil booking pending (status pending = 1)
-        cur.execute("""
-            SELECT 
-                b.id_booking,
-                u.nama,
-                b.tanggal_pelaksanaan,
-                pj.harga
-            FROM booking b
-            JOIN pengguna u ON b.id_pengguna = u.id_pengguna
-            JOIN paket_jasa pj ON b.id_paket_jasa = pj.id_paket_jasa
-            WHERE b.id_status_booking = 1
-        """)
-
-        data = cur.fetchall()
-
-        if not data:
-            print("Tidak ada booking pending.")
-            input("Tekan enter untuk lanjut")
-            clear_console()
-            return
-
-        # buat heap
-        heap = MaxHeap()
-        import datetime
-        now = datetime.datetime.now()
-
-        # masukkan ke heap
-        for id_booking, nama_cust, tgl_pelaksanaan, harga in data:
-            if tgl_pelaksanaan is None:
-                # kalo belum ada tanggal, prioritas kecil
-                priority = -9999
-            else:
-                tgl_obj = datetime.datetime.strptime(str(tgl_pelaksanaan), "%Y-%m-%d")
-                selisih_hari = (tgl_obj - now).days
-                priority = -abs(selisih_hari)
-
-            # format item: (priority, id, nama, tanggal)
-            heap.insert((priority, id_booking, nama_cust, tgl_pelaksanaan))
-
-        print("\nBooking Prioritas Teratas:")
-        print("(berdasarkan tanggal paling dekat)")
-
-        # ambil 1 booking paling urgent
-        top = heap.extract_max()
-        if not top:
-            print("Heap kosong.")
-            input("Tekan enter untuk lanjut")
-            clear_console()
-            return
-
-        priority, idb, nama_cust, tgl_pel = top
-
-        print("\n----------------------------------")
-        print(f"ID Booking     : {idb}")
-        print(f"Nama Customer  : {nama_cust}")
-        print(f"Tanggal        : {tgl_pel}")
-        print("----------------------------------")
-
-        input("\nTekan enter untuk lanjut")
-        clear_console()
-
-    except Exception as e:
-        print("Terjadi kesalahan saat memproses priority queue:", e)
-        input("Tekan enter untuk lanjut")
-        clear_console()
-
-    finally:
-        if 'cur' in locals() and cur:
-            cur.close()
-        if 'conn' in locals() and conn:
-            conn.close()
-
 def lihat_booking_prioritas():
+    clear_console()
     print("\n=== Booking Prioritas (MaxHeap) ===")
 
     try:
         conn = get_connection()
         cur = conn.cursor()
 
+        # hanya booking yang sudah disetujui (status = 2)
         cur.execute("""
             SELECT 
                 b.id_booking,
                 u.nama,
                 pj.nama_paket,
-                b.tanggal_booking,
                 b.tanggal_pelaksanaan,
                 b.waktu_mulai,
-                sb.status,
-                b.jumlah,
                 COALESCE(p.total_harga, 0)
             FROM booking b
             JOIN pengguna u ON b.id_pengguna = u.id_pengguna
             JOIN paket_jasa pj ON b.id_paket_jasa = pj.id_paket_jasa
-            JOIN status_booking sb ON b.id_status_booking = sb.id_status_booking
             LEFT JOIN pembayaran p ON b.id_booking = p.id_booking
+            WHERE b.id_status_booking = 2
         """)
 
         data = cur.fetchall()
 
         if not data:
-            print("Tidak ada booking sama sekali.")
+            print("Tidak ada booking yang disetujui.")
             input("Tekan enter untuk lanjut...")
             clear_console()
             return
 
-        # INISIASI MAX HEAP
         heap = MaxHeap()
+        import datetime
+        today = datetime.date.today()
 
-        # MASUKKAN BOOKING KE DALAM HEAP
         for row in data:
             id_booking = row[0]
             nama = row[1]
             paket = row[2]
-            tanggal = row[3]
-            pelaksanaan = row[4]
-            mulai = row[5]
-            status = row[6]
-            jumlah = row[7]
-            harga = row[8]
+            pelaksanaan = row[3]   # bisa date atau string tergantung DB
+            waktu_mulai = row[4]
+            harga = row[5]
 
-            # bikin skor prioritas
-            skor = 0
+            # normalisasi pelaksanaan ke object date
+            pelaksanaan_date = None
+            if pelaksanaan is None:
+                pelaksanaan_date = None
+            elif isinstance(pelaksanaan, datetime.date):
+                pelaksanaan_date = pelaksanaan
+            else:
+                # coba parse dari string
+                try:
+                    pelaksanaan_date = datetime.datetime.strptime(str(pelaksanaan), "%Y-%m-%d").date()
+                except Exception:
+                    # kalau format beda, set None supaya ditempatkan paling akhir
+                    pelaksanaan_date = None
 
-            # prioritas paling tinggi: sudah bayar
-            if harga > 0:
-                skor += 1000
+            # hitung selisih hari dari hari ini (semakin kecil => prioritas lebih tinggi)
+            if pelaksanaan_date:
+                selisih_hari = (pelaksanaan_date - today).days
+                # kalau tanggal sudah lewat, berikan prioritas rendah (taruh di bawah)
+                if selisih_hari < 0:
+                    selisih_hari = 9999
+            else:
+                selisih_hari = 9999
 
-            # booking lebih baru prioritas naik
-            if tanggal:
-                skor += tanggal.toordinal()
+            # priority value: kita mau max-heap => lebih besar value = lebih prioritas
+            # jadi kebalikan dari selisih hari (lebih dekat => nilai besar)
+            priority = 100000 - selisih_hari  # angka dasar untuk memastikan positif
 
-            # jumlah peserta juga jadi faktor
-            skor += (jumlah or 1) * 5
+            # jika sudah ada pembayaran (harga > 0) beri bonus prioritas
+            if harga and float(harga) > 0:
+                priority += 1000
 
-            # status tertentu dinaikkan
-            if status.lower() == "menunggu":
-                skor += 50
-            elif status.lower() == "disetujui":
-                skor += 150
-
-            heap.push(skor, {
-                "id_booking": id_booking,
+            # masukkan tuple sesuai implementasi MaxHeap: (priority, payload)
+            payload = {
+                "id": id_booking,
                 "nama": nama,
                 "paket": paket,
-                "tanggal_booking": tanggal,
-                "tanggal_pelaksanaan": pelaksanaan,
-                "waktu_mulai": mulai,
-                "status": status,
-                "jumlah": jumlah,
+                "tanggal": pelaksanaan_date,
+                "waktu_mulai": waktu_mulai,
                 "harga": harga
-            })
+            }
+            heap.insert((priority, payload))
 
-        print("\n--- Urutan Booking Berdasarkan Prioritas ---")
+        print("\n--- Urutan Booking Berdasarkan Prioritas (tanggal terdekat dulu) ---")
         rank = 1
 
-        while not heap.is_empty():
-            skor, item = heap.pop()
-            print(f"\n#{rank} | PRIORITAS: {skor}")
-            print(f"ID Booking   : {item['id_booking']}")
-            print(f"Customer     : {item['nama']}")
-            print(f"Paket        : {item['paket']}")
-            print(f"Tanggal Book : {item['tanggal_booking']}")
-            print(f"Pelaksanaan  : {item['tanggal_pelaksanaan'] or '-'}")
-            print(f"Waktu Mulai  : {item['waktu_mulai'] or '-'}")
-            print(f"Jumlah       : {item['jumlah']}")
-            print(f"Total Bayar  : {item['harga']}")
-            print(f"Status       : {item['status']}")
+        # self.data[0] reserved, elemen nyata mulai index 1
+        while len(heap.data) > 1:
+            prio, item = heap.extract_max()
+            tanggal_display = item["tanggal"].strftime("%Y-%m-%d") if item["tanggal"] else "-"
+            waktu_display = (
+                item["waktu_mulai"].strftime("%H:%M") if hasattr(item["waktu_mulai"], "strftime")
+                else (str(item["waktu_mulai"]) if item["waktu_mulai"] else "-")
+            )
+
+            print(f"\n#{rank}")
+            print("---------------------------------------")
+            print(f"ID Booking       : {item['id']}")
+            print(f"Customer         : {item['nama']}")
+            print(f"Paket            : {item['paket']}")
+            print(f"Tanggal          : {tanggal_display}")
+            print(f"Waktu Mulai      : {waktu_display}")
+            print(f"Total Pembayaran : {item['harga']}")
+            print("---------------------------------------")
             rank += 1
 
     except Exception as e:
         print("Terjadi kesalahan saat mengambil booking:", e)
     finally:
-        if 'cur' in locals(): cur.close()
-        if 'conn' in locals(): conn.close()
+        try:
+            if 'cur' in locals() and cur:
+                cur.close()
+            if 'conn' in locals() and conn:
+                conn.close()
+        except Exception:
+            pass
 
     input("\nTekan enter untuk lanjut...")
     clear_console()
