@@ -929,7 +929,7 @@ def lihat_review():
 
 def lihat_booking_prioritas():
     clear_console()
-    print("\n=== Booking Prioritas (MaxHeap) ===")
+    print("\n--- Booking Prioritas (MaxHeap) --")
 
     try:
         conn = get_connection()
@@ -967,42 +967,33 @@ def lihat_booking_prioritas():
             id_booking = row[0]
             nama = row[1]
             paket = row[2]
-            pelaksanaan = row[3]   # bisa date atau string tergantung DB
+            pelaksanaan = row[3]
             waktu_mulai = row[4]
             harga = row[5]
 
-            # normalisasi pelaksanaan ke object date
             pelaksanaan_date = None
             if pelaksanaan is None:
                 pelaksanaan_date = None
             elif isinstance(pelaksanaan, datetime.date):
                 pelaksanaan_date = pelaksanaan
             else:
-                # coba parse dari string
                 try:
                     pelaksanaan_date = datetime.datetime.strptime(str(pelaksanaan), "%Y-%m-%d").date()
                 except Exception:
-                    # kalau format beda, set None supaya ditempatkan paling akhir
                     pelaksanaan_date = None
 
-            # hitung selisih hari dari hari ini (semakin kecil => prioritas lebih tinggi)
             if pelaksanaan_date:
                 selisih_hari = (pelaksanaan_date - today).days
-                # kalau tanggal sudah lewat, berikan prioritas rendah (taruh di bawah)
                 if selisih_hari < 0:
                     selisih_hari = 9999
             else:
                 selisih_hari = 9999
 
-            # priority value: kita mau max-heap => lebih besar value = lebih prioritas
-            # jadi kebalikan dari selisih hari (lebih dekat => nilai besar)
-            priority = 100000 - selisih_hari  # angka dasar untuk memastikan positif
+            priority = 100000 - selisih_hari
 
-            # jika sudah ada pembayaran (harga > 0) beri bonus prioritas
             if harga and float(harga) > 0:
                 priority += 1000
 
-            # masukkan tuple sesuai implementasi MaxHeap: (priority, payload)
             payload = {
                 "id": id_booking,
                 "nama": nama,
@@ -1016,7 +1007,6 @@ def lihat_booking_prioritas():
         print("\n--- Urutan Booking Berdasarkan Prioritas (tanggal terdekat dulu) ---")
         rank = 1
 
-        # self.data[0] reserved, elemen nyata mulai index 1
         while len(heap.data) > 1:
             prio, item = heap.extract_max()
             tanggal_display = item["tanggal"].strftime("%Y-%m-%d") if item["tanggal"] else "-"
